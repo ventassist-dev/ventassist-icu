@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>VentAssist — ICU Decision Support</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+
+<style>
+/* ── Reset & Variables ─────────────────────────────────── */
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+
+:root {
+  --bg-deep:     #050911;
+  --bg-panel:    #080e1a;
+  --bg-card:     #0c1424;
+  --bg-input:    #101828;
+  --border:      rgba(0,200,180,0.12);
+  --border-hot:  rgba(0,200,180,0.35);
+  --teal:        #00c8b4;
+  --teal-dim:    rgba(0,200,180,0.15);
+  --teal-glow:   rgba(0,200,180,0.4);
+  --amber:       #ffb340;
+  --red:         #ff4d6d;
+  --green:       #3dffa0;
+  --text-pri:    #e8f0ff;
+  --text-sec:    #7a90b0;
+  --text-dim:    #3a5070;
+  --font-ui:     'DM Sans', sans-serif;
+  --font-head:   'Syne', sans-serif;
+  --font-mono:   'IBM Plex Mono', monospace;
+  --radius:      14px;
+  --radius-sm:   8px;
+}
+
+html, body {
+  height: 100%;
+  background: var(--bg-deep);
+  color: var(--text-pri);
+  font-family: var(--font-ui);
+  overflow: hidden;
+}
+
+/* ── Ambient background glow ──────────────────────────── */
+body::before {
+  content: '';
+  position: fixed;
+  top: -30%;
+  left: -10%;
+  width: 60%;
+  height: 60%;
+  background: radial-gradient(ellipse, rgba(0,200,180,0.04) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── App Shell ─────────────────────────────────────────── */
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh; /* mobile safe */
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Header ────────────────────────────────────────────── */
+.header {
+  flex-shrink: 0;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  padding: 0 16px;
+  height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  backdrop-filter: blur(20px);
+}
+
+.logo {
+  font-family: var(--font-head);
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.logo-icon {
+  width: 28px; height: 28px;
+  background: linear-gradient(135deg, var(--teal), #0090ff);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  box-shadow: 0 0 12px var(--teal-glow);
+}
+
+.logo-text { color: var(--text-pri); }
+.logo-text span { color: var(--teal); }
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.live-badge {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(61,255,160,0.08);
+  border: 1px solid rgba(61,255,160,0.25);
+  border-radius: 20px;
+  padding: 4px 10px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--green);
+  letter-spacing: 1px;
+}
+
+.live-dot {
+  width: 6px; height: 6px;
+  background: var(--green);
+  border-radius: 50%;
+  animation: livePulse 2s ease-in-out infinite;
+}
+
+@keyframes livePulse {
+  0%, 100% { opacity:1; transform:scale(1); }
+  50%       { opacity:0.4; transform:scale(0.8); }
+}
+
+.vitals-toggle {
+  display: none; /* shows on mobile */
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  color: var(--teal);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  letter-spacing: 0.5px;
+}
+
+/* ── Main Layout ───────────────────────────────────────── */
+.main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ── Sidebar ───────────────────────────────────────────── */
+.sidebar {
+  width: 200px;
+  flex-shrink: 0;
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 16px 12px;
+  gap: 16px;
+  transition: transform 0.3s ease;
+}
+
+.sidebar::-webkit-scrollbar { width: 3px; }
+.sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.section-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+/* Vitals grid */
+.vitals-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.vital-item {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  transition: border-color 0.3s;
+}
+
+.vital-item.warning { border-color: rgba(255,179,64,0.35); }
+.vital-item.danger  { border-color: rgba(255,77,109,0.45); }
+
+.vital-name {
+  font-size: 9px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.vital-val {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-sec);
+  transition: color 0.3s;
+}
+
+.vital-val.normal  { color: var(--green); }
+.vital-val.warning { color: var(--amber); }
+.vital-val.danger  { color: var(--red);
+  animation: dangerFlash 1.5s ease-in-out infinite; }
+
+@keyframes dangerFlash {
+  0%, 100% { opacity:1; }
+  50%       { opacity:0.6; }
+}
+
+/* Quick actions */
+.quick-actions { display: flex; flex-direction: column; gap: 5px; }
+
+.quick-btn {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  color: var(--text-sec);
+  font-size: 11px;
+  font-family: var(--font-ui);
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s;
+  line-height: 1.3;
+}
+
+.quick-btn:hover, .quick-btn:active {
+  background: var(--teal-dim);
+  border-color: var(--border-hot);
+  color: var(--teal);
+}
+
+/* Safety card */
+.safety-card {
+  background: rgba(255,179,64,0.05);
+  border: 1px solid rgba(255,179,64,0.2);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  font-size: 10px;
+  color: rgba(255,179,64,0.7);
+  line-height: 1.5;
+}
+
+/* ── Chat Area ─────────────────────────────────────────── */
+.chat-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.chat-window {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  scroll-behavior: smooth;
+}
+
+.chat-window::-webkit-scrollbar { width: 4px; }
+.chat-window::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* Messages */
+.msg {
+  display: flex;
+  flex-direction: column;
+  max-width: 88%;
+  gap: 4px;
+  animation: msgIn 0.25s ease-out;
+}
+
+@keyframes msgIn {
+  from { opacity:0; transform:translateY(8px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+
+.msg.doctor { align-self: flex-end; }
+.msg.agent  { align-self: flex-start; }
+.msg.system { align-self: center; max-width: 92%; }
+
+.msg-label {
+  font-size: 10px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  padding: 0 4px;
+  letter-spacing: 0.5px;
+}
+.msg.doctor .msg-label { text-align: right; }
+
+.msg-bubble {
+  padding: 11px 14px;
+  border-radius: var(--radius);
+  font-size: 14px;
+  line-height: 1.65;
+  word-break: break-word;
+}
+
+.msg.doctor .msg-bubble {
+  background: linear-gradient(135deg, #0d2a4a, #0a2040);
+  border: 1px solid rgba(0,144,255,0.3);
+  border-bottom-right-radius: 4px;
+  color: #d0e8ff;
+}
+
+.msg.agent .msg-bubble {
+  background: linear-gradient(135deg, #071a12, #061510);
+  border: 1px solid rgba(0,200,180,0.25);
+  border-bottom-left-radius: 4px;
+  color: #c8ffe8;
+}
+
+.msg.agent.urgent .msg-bubble {
+  border-color: rgba(255,77,109,0.4);
+  background: linear-gradient(135deg, #1a0712, #150611);
+  color: #ffd0d8;
+}
+
+.msg.system .msg-bubble {
+  background: rgba(0,200,180,0.04);
+  border: 1px solid var(--border);
+  color: var(--text-sec);
+  font-size: 12px;
+  text-align: center;
+  border-radius: var(--radius);
+}
+
+.tool-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(0,144,255,0.08);
+  border: 1px solid rgba(0,144,255,0.2);
+  border-radius: 20px;
+  padding: 3px 9px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #64b5f6;
+  margin-bottom: 5px;
+  letter-spacing: 0.3px;
+}
+
+/* Typing indicator */
+.typing {
+  align-self: flex-start;
+  display: none;
+  gap: 5px;
+  align-items: center;
+  padding: 12px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  border-bottom-left-radius: 4px;
+}
+.typing.show { display: flex; }
+
+.typing-dot {
+  width: 5px; height: 5px;
+  background: var(--teal);
+  border-radius: 50%;
+  animation: typingBounce 1.2s ease-in-out infinite;
+}
+.typing-dot:nth-child(2) { animation-delay:0.2s; }
+.typing-dot:nth-child(3) { animation-delay:0.4s; }
+
+@keyframes typingBounce {
+  0%,100% { transform:translateY(0);   opacity:0.4; }
+  50%     { transform:translateY(-4px); opacity:1; }
+}
+
+/* ── Input Bar ─────────────────────────────────────────── */
+.input-bar {
+  flex-shrink: 0;
+  padding: 12px 16px;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.input-wrap {
+  flex: 1;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  transition: border-color 0.2s;
+  min-height: 46px;
+}
+
+.input-wrap:focus-within {
+  border-color: var(--border-hot);
+  box-shadow: 0 0 0 3px rgba(0,200,180,0.06);
+}
+
+.input-wrap textarea {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-pri);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.5;
+  resize: none;
+  padding: 10px 0;
+  max-height: 100px;
+  overflow-y: auto;
+}
+
+.input-wrap textarea::placeholder { color: var(--text-dim); }
+
+/* Mic button */
+.mic-btn {
+  width: 46px; height: 46px;
+  flex-shrink: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 18px;
+  color: var(--text-sec);
+  position: relative;
+}
+
+.mic-btn:hover { border-color: var(--border-hot); color: var(--teal); }
+
+.mic-btn.listening {
+  background: rgba(255,77,109,0.12);
+  border-color: rgba(255,77,109,0.5);
+  color: var(--red);
+  animation: micPulse 1s ease-in-out infinite;
+}
+
+@keyframes micPulse {
+  0%,100% { box-shadow: 0 0 0 0 rgba(255,77,109,0.3); }
+  50%     { box-shadow: 0 0 0 10px rgba(255,77,109,0); }
+}
+
+.mic-btn.listening::after {
+  content: '';
+  position: absolute;
+  inset: -5px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,77,109,0.3);
+  animation: micRing 1s ease-out infinite;
+}
+
+@keyframes micRing {
+  0%   { opacity:1; transform:scale(1); }
+  100% { opacity:0; transform:scale(1.5); }
+}
+
+/* Send button */
+.send-btn {
+  width: 46px; height: 46px;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, var(--teal), #0090ff);
+  border: none;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 18px;
+  color: #fff;
+  transition: all 0.2s;
+  box-shadow: 0 2px 12px rgba(0,200,180,0.25);
+}
+
+.send-btn:hover  { transform:scale(1.05); box-shadow: 0 4px 20px rgba(0,200,180,0.4); }
+.send-btn:active { transform:scale(0.96); }
+.send-btn:disabled {
+  background: var(--bg-card);
+  color: var(--text-dim);
+  box-shadow: none;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ── Vitals Modal (mobile) ─────────────────────────────── */
+.vitals-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(5,9,17,0.85);
+  z-index: 100;
+  backdrop-filter: blur(4px);
+  align-items: flex-end;
+}
+
+.vitals-overlay.open { display: flex; }
+
+.vitals-sheet {
+  width: 100%;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+  border-radius: 20px 20px 0 0;
+  padding: 20px 16px 32px;
+  animation: sheetUp 0.3s ease-out;
+}
+
+@keyframes sheetUp {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+
+.sheet-handle {
+  width: 36px; height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  margin: 0 auto 16px;
+}
+
+.sheet-vitals {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.sheet-close {
+  width: 100%;
+  padding: 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-sec);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+  letter-spacing: 1px;
+}
+
+/* ── Mobile Responsive ─────────────────────────────────── */
+@media (max-width: 640px) {
+  .sidebar { display: none; }
+
+  .vitals-toggle { display: block; }
+
+  .chat-window { padding: 14px 12px; }
+
+  .msg { max-width: 95%; }
+
+  .msg-bubble { font-size: 13px; padding: 10px 12px; }
+
+  .input-bar { padding: 10px 12px; }
+
+  .header { height: 52px; padding: 0 12px; }
+
+  .logo { font-size: 16px; }
+
+  .logo-icon { width: 24px; height: 24px; font-size: 12px; }
+}
+
+@media (min-width: 641px) {
+  .vitals-overlay { display: none !important; }
+}
+
+/* ── Scrollbar thin for mobile ─────────────────────────── */
+.chat-window {
+  -webkit-overflow-scrolling: touch;
+}
+</style>
+</head>
+
+<body>
+<div class="app">
+
+  <!-- Header -->
+  <header class="header">
+    <div class="logo">
+      <div class="logo-icon">🫁</div>
+      <div class="logo-text">Vent<span>Assist</span></div>
+    </div>
+    <div class="header-right">
+      <div class="live-badge">
+        <div class="live-dot"></div>
+        LIVE
+      </div>
+      <button class="vitals-toggle" onclick="openVitals()">📊 VITALS</button>
+    </div>
+  </header>
+
+  <!-- Main -->
+  <div class="main">
+
+    <!-- Sidebar (desktop only) -->
+    <aside class="sidebar">
+
+      <div>
+        <div class="section-label">Live Vitals</div>
+        <div class="vitals-grid" id="vitalsGrid">
+          <div class="vital-item" id="vi-spo2">
+            <div class="vital-name">SpO₂</div>
+            <div class="vital-val" id="vv-spo2">—</div>
+          </div>
+          <div class="vital-item" id="vi-fio2">
+            <div class="vital-name">FiO₂</div>
+            <div class="vital-val" id="vv-fio2">—</div>
+          </div>
+          <div class="vital-item" id="vi-peep">
+            <div class="vital-name">PEEP</div>
+            <div class="vital-val" id="vv-peep">—</div>
+          </div>
+          <div class="vital-item" id="vi-pip">
+            <div class="vital-name">Peak P</div>
+            <div class="vital-val" id="vv-pip">—</div>
+          </div>
+          <div class="vital-item" id="vi-pplat">
+            <div class="vital-name">Pplat</div>
+            <div class="vital-val" id="vv-pplat">—</div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-label">Quick Ask</div>
+        <div class="quick-actions">
+          <button class="quick-btn" onclick="fill('SpO2 is 87, FiO2 60 percent, PEEP 8')">
+            🫁 Low SpO2 scenario
+          </button>
+          <button class="quick-btn" onclick="fill('High pressure alarm, peak is 45, plateau is 34, PEEP 8')">
+            🚨 Pressure alarm
+          </button>
+          <button class="quick-btn" onclick="fill('Can I wean? FiO2 45, PEEP 6, GCS 13, stable, no new sedation')">
+            📋 Weaning check
+          </button>
+          <button class="quick-btn" onclick="fill('What is driving pressure and why does it matter?')">
+            💡 Explain driving pressure
+          </button>
+        </div>
+      </div>
+
+      <div class="safety-card">
+        ⚠️ All outputs are decision support only. Always verify with your clinical team before acting.
+      </div>
+
+    </aside>
+
+    <!-- Chat -->
+    <div class="chat-area">
+
+      <div class="chat-window" id="chatWindow">
+        <div class="msg system">
+          <div class="msg-bubble">
+            VentAssist is ready. Describe your patient's situation or tap the mic to speak.
+          </div>
+        </div>
+      </div>
+
+      <!-- Typing indicator -->
+      <div class="typing" id="typing" style="margin:0 16px 8px;">
+        <div class="typing-dot"></div>
+        <div class="typing-dot"></div>
+        <div class="typing-dot"></div>
+      </div>
+
+      <!-- Input bar -->
+      <div class="input-bar">
+        <button class="mic-btn" id="micBtn" onclick="toggleMic()" title="Tap to speak">🎤</button>
+        <div class="input-wrap">
+          <textarea
+            id="userInput"
+            placeholder="Describe the clinical situation..."
+            rows="1"
+            onkeydown="handleKey(event)"
+            oninput="autoResize(this)"
+          ></textarea>
+        </div>
+        <button class="send-btn" id="sendBtn" onclick="send()" title="Send">➤</button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- Vitals bottom sheet (mobile) -->
+<div class="vitals-overlay" id="vitalsOverlay" onclick="closeVitals(event)">
+  <div class="vitals-sheet">
+    <div class="sheet-handle"></div>
+    <div class="section-label" style="margin-bottom:12px;">Live Vitals</div>
+    <div class="sheet-vitals">
+      <div class="vital-item" id="ms-spo2">
+        <div class="vital-name">SpO₂</div>
+        <div class="vital-val" id="mv-spo2">—</div>
+      </div>
+      <div class="vital-item" id="ms-fio2">
+        <div class="vital-name">FiO₂</div>
+        <div class="vital-val" id="mv-fio2">—</div>
+      </div>
+      <div class="vital-item" id="ms-peep">
+        <div class="vital-name">PEEP</div>
+        <div class="vital-val" id="mv-peep">—</div>
+      </div>
+      <div class="vital-item" id="ms-pip">
+        <div class="vital-name">Peak P</div>
+        <div class="vital-val" id="mv-pip">—</div>
+      </div>
+    </div>
+    <button class="sheet-close" onclick="closeVitals()">CLOSE</button>
+  </div>
+</div>
+
+<script>
+// ── State ────────────────────────────────────────────────
+let isListening   = false;
+let recognition   = null;
+let vitals        = { spo2:null, fio2:null, peep:null, pip:null, pplat:null };
+
+// ── Auto-resize textarea ─────────────────────────────────
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 100) + 'px';
+}
+
+// ── Enter to send (Shift+Enter = newline) ─────────────────
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+}
+
+// ── Quick fill ────────────────────────────────────────────
+function fill(text) {
+  const ta = document.getElementById('userInput');
+  ta.value = text;
+  autoResize(ta);
+  ta.focus();
+  closeVitals();
+}
+
+// ── Add message to chat ───────────────────────────────────
+function addMsg(role, text, toolName=null, urgent=false) {
+  const win  = document.getElementById('chatWindow');
+  const div  = document.createElement('div');
+  div.className = `msg ${role}${urgent ? ' urgent' : ''}`;
+
+  const labels = { doctor:'👨‍⚕️ Doctor', agent:'🤖 VentAssist', system:'' };
+  let html = '';
+  if (role !== 'system') {
+    html += `<div class="msg-label">${labels[role]}</div>`;
+  }
+  if (toolName) {
+    html += `<div class="tool-pill">🔧 ${toolName.replace(/_/g,' ')}</div>`;
+  }
+  html += `<div class="msg-bubble">${text}</div>`;
+  div.innerHTML = html;
+  win.appendChild(div);
+  win.scrollTop = win.scrollHeight;
+}
+
+// ── Show/hide typing indicator ────────────────────────────
+function showTyping(show) {
+  document.getElementById('typing').className = 'typing' + (show ? ' show' : '');
+  if (show) {
+    const win = document.getElementById('chatWindow');
+    win.scrollTop = win.scrollHeight;
+  }
+}
+
+// ── Extract vitals from text ──────────────────────────────
+function extractVitals(text) {
+  const t = text.toLowerCase();
+  const patterns = [
+    { key:'spo2',  re:/spo2[^0-9]*([0-9]+)/,  warn: v=>v<92,  danger: v=>v<85,  unit:'%'   },
+    { key:'fio2',  re:/fio2[^0-9]*([0-9]+)/,  warn: v=>v>60,  danger: v=>v>85,  unit:'%'   },
+    { key:'peep',  re:/peep[^0-9]*([0-9]+)/,  warn: v=>v>10,  danger: v=>v>16,  unit:' cmH₂O' },
+    { key:'pip',   re:/peak[^0-9]*([0-9]+)/,  warn: v=>v>35,  danger: v=>v>45,  unit:' cmH₂O' },
+    { key:'pplat', re:/plat[^0-9]*([0-9]+)/, warn: v=>v>25,  danger: v=>v>30,  unit:' cmH₂O' },
+  ];
+
+  patterns.forEach(p => {
+    const m = t.match(p.re);
+    if (m) {
+      const val = parseInt(m[1]);
+      vitals[p.key] = val;
+      const status = p.danger(val) ? 'danger' : p.warn(val) ? 'warning' : 'normal';
+      const display = val + p.unit;
+
+      // Update sidebar
+      const sv = document.getElementById('vv-' + p.key);
+      const si = document.getElementById('vi-' + p.key);
+      if (sv) { sv.textContent = display; sv.className = 'vital-val ' + status; }
+      if (si) { si.className = 'vital-item ' + (status !== 'normal' ? status : ''); }
+
+      // Update mobile sheet
+      const mv = document.getElementById('mv-' + p.key);
+      const mi = document.getElementById('ms-' + p.key);
+      if (mv) { mv.textContent = display; mv.className = 'vital-val ' + status; }
+      if (mi) { mi.className = 'vital-item ' + (status !== 'normal' ? status : ''); }
+    }
+  });
+}
+
+// ── Send message ──────────────────────────────────────────
+async function send() {
+  const ta   = document.getElementById('userInput');
+  const btn  = document.getElementById('sendBtn');
+  const text = ta.value.trim();
+  if (!text) return;
+
+  addMsg('doctor', text);
+  extractVitals(text);
+  ta.value = '';
+  ta.style.height = 'auto';
+  btn.disabled = true;
+  showTyping(true);
+
+  try {
+    const res = await fetch('/ask', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question: text })
+    });
+    const data = await res.json();
+    showTyping(false);
+
+    const urgent = data.response &&
+      (data.response.toLowerCase().includes('assess your patient now') ||
+       data.response.toLowerCase().includes('emergency') ||
+       data.response.toLowerCase().includes('immediately'));
+
+    addMsg('agent', data.response || '⚠️ No response received.', data.tool_used, urgent);
+    if (data.response) extractVitals(data.response);
+
+  } catch(err) {
+    showTyping(false);
+    addMsg('agent', '⚠️ Connection error. Is the Flask server running?');
+  }
+
+  btn.disabled = false;
+  document.getElementById('userInput').focus();
+}
+
+// ── Voice Input (Web Speech API) ──────────────────────────
+function toggleMic() {
+  if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+    addMsg('system', '⚠️ Voice input not supported in this browser. Try Chrome on Android or desktop Chrome.');
+    return;
+  }
+
+  if (isListening) {
+    recognition.stop();
+    return;
+  }
+
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognition = new SpeechRecognition();
+  recognition.lang          = 'en-US';
+  recognition.interimResults = true;
+  recognition.continuous    = false;
+
+  const micBtn = document.getElementById('micBtn');
+  const ta     = document.getElementById('userInput');
+
+  recognition.onstart = () => {
+    isListening = true;
+    micBtn.classList.add('listening');
+    micBtn.textContent = '⏹';
+    ta.placeholder = 'Listening...';
+  };
+
+  recognition.onresult = (e) => {
+    const transcript = Array.from(e.results)
+      .map(r => r[0].transcript).join('');
+    ta.value = transcript;
+    autoResize(ta);
+  };
+
+  recognition.onend = () => {
+    isListening = false;
+    micBtn.classList.remove('listening');
+    micBtn.textContent = '🎤';
+    ta.placeholder = 'Describe the clinical situation...';
+    // Auto-send if we captured something
+    if (ta.value.trim()) send();
+  };
+
+  recognition.onerror = (e) => {
+    isListening = false;
+    micBtn.classList.remove('listening');
+    micBtn.textContent = '🎤';
+    if (e.error !== 'aborted') {
+      addMsg('system', `⚠️ Mic error: ${e.error}. Check browser permissions.`);
+    }
+  };
+
+  recognition.start();
+}
+
+// ── Mobile vitals sheet ───────────────────────────────────
+function openVitals() {
+  document.getElementById('vitalsOverlay').classList.add('open');
+}
+function closeVitals(e) {
+  if (!e || e.target === document.getElementById('vitalsOverlay')) {
+    document.getElementById('vitalsOverlay').classList.remove('open');
+  }
+}
+
+// ── Focus input on load ───────────────────────────────────
+window.onload = () => {
+  setTimeout(() => document.getElementById('userInput').focus(), 100);
+};
+</script>
+</body>
+</html>
