@@ -51,7 +51,7 @@ gcloud run deploy ventassist \
 ```
 
 ## Architecture
-See ARCHITECTURE.md for system diagram.
+See ARCHITECTURE.jpg for system diagram.
 
 ## Disclaimer
 This tool is for decision support only and does not replace
